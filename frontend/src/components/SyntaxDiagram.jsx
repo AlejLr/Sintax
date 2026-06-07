@@ -84,7 +84,6 @@ const CAT_COLOR = {
   "interjección":            "#EC4899",
 };
 
-function getFuncionColor(f) { return FUNCION_COLOR[f] ?? "#9CA3AF"; }
 
 // ── Interval-packing layout algorithm ───────────────────────────────────────
 // Returns each group annotated with a `rowIdx`.
