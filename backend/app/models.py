@@ -34,7 +34,7 @@ class Morfologia(BaseModel):
     persona: Optional[str] = None    # 1, 2, 3
     modo: Optional[str] = None       # Ind, Sub, Imp, Inf, Part, Ger
     tiempo: Optional[str] = None     # Pres, Past, Fut, Imp, ...
-    caso: Optional[str] = None       # Nom, Acc, Dat (pronouns)
+    caso: Optional[str] = None       # Nom, Acc, Dat
 
 
 # ---------------------------------------------------------------------------
