@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import SyntaxDiagram from "./SyntaxDiagram.jsx";
 import LabelPicker from "./LabelPicker.jsx";
 

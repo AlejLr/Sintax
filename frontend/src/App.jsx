@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAnalyze } from "./hooks/useAnalyze.js";
 import Header from "./components/Header.jsx";
 import SentenceInput from "./components/SentenceInput.jsx";
@@ -13,15 +13,11 @@ export default function App() {
 
   const { data, loading, slowLoad, error, analizar } = useAnalyze();
 
-  useEffect(() => {
-    if (data) {
+  function handleAnalizar(oracion) {
+    analizar(oracion, nivel, () => {
       setRespuesta(null);
       setScreen("ejercicio");
-    }
-  }, [data]);
-
-  function handleAnalizar(oracion) {
-    analizar(oracion, nivel);
+    });
   }
 
   function handleCorregir(respuestaAlumno) {

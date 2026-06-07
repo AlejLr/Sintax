@@ -17,7 +17,7 @@
  *   - Layout recalculates on every render (cheap: O(n²), n ≤ ~10)
  */
 
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -84,7 +84,7 @@ const CAT_COLOR = {
   "interjección":            "#EC4899",
 };
 
-export function getFuncionColor(f) { return FUNCION_COLOR[f] ?? "#9CA3AF"; }
+function getFuncionColor(f) { return FUNCION_COLOR[f] ?? "#9CA3AF"; }
 
 // ── Interval-packing layout algorithm ───────────────────────────────────────
 // Returns each group annotated with a `rowIdx`.

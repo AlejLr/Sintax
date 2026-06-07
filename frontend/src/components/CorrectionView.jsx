@@ -1,4 +1,3 @@
-import React from "react";
 import SyntaxDiagram from "./SyntaxDiagram.jsx";
 
 // ── Corrección de categorías ─────────────────────────────────────────────────
@@ -18,7 +17,7 @@ function corregirCategorias(tokens, categorias) {
 }
 
 // ── Corrección de grupos ─────────────────────────────────────────────────────
-function corregirGrupos(gruposAPI, gruposAlumno, tokens) {
+function corregirGrupos(gruposAPI, gruposAlumno) {
   return gruposAPI.map((gc) => {
       const setCorrecto = new Set(gc.token_ids);
       const candidato = gruposAlumno
@@ -89,7 +88,7 @@ export default function CorrectionView({ data, respuesta, nivel, onReintentar, o
   const conProp = nivel === "4eso" || nivel === "bachillerato";
 
   const resultCats   = corregirCategorias(tokens, categorias);
-  const resultGrupos = corregirGrupos(gruposAPI, gruposAlumno, tokens);
+  const resultGrupos = corregirGrupos(gruposAPI, gruposAlumno);
   const resultProps  = conProp ? corregirProposiciones(propAPI, propAlumno) : [];
 
   const bienCats    = resultCats.filter((r)   => r.estado === "correcta").length;

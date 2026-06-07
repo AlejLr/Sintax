@@ -1,5 +1,3 @@
-import React from "react";
-
 const NIVELES = [
   { value: "2eso", label: "2º ESO" },
   { value: "3eso", label: "3º ESO" },

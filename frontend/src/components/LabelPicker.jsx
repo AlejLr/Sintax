@@ -1,5 +1,3 @@
-import React from "react";
-
 // ── Opciones disponibles ────────────────────────────────────────────────────
 
 const CATEGORIAS = [

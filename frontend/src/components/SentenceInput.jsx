@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 
 const EJEMPLOS = [
   "El perro negro ladra fuerte en el jardín.",

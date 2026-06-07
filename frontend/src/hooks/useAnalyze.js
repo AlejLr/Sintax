@@ -10,7 +10,7 @@ export function useAnalyze() {
   const [error,        setError]        = useState(null);
   const slowTimer = useRef(null);
 
-  async function analizar(oracion, nivel) {
+  async function analizar(oracion, nivel, onSuccess) {
     setLoading(true);
     setError(null);
     setData(null);
@@ -35,7 +35,9 @@ export function useAnalyze() {
         throw new Error(body.detail ?? `Error ${res.status}`);
       }
 
-      setData(await res.json());
+      const json = await res.json();
+      setData(json);
+      onSuccess?.(json);
     } catch (e) {
       if (e.name === "AbortError") {
         setError("El servidor tardó demasiado en responder. Prueba con una oración más corta.");
