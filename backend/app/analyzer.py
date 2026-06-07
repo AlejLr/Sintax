@@ -9,7 +9,7 @@ from .models import (
     Grupo, Subgrupo, Proposicion, Nivel,
 )
 from .mappings import (
-    CATEGORIA, FUNCION, COLOR_FUNCION, COLOR_CATEGORIA,
+    CATEGORIA, COLOR_FUNCION, COLOR_CATEGORIA,
     VERBOS_COPULATIVOS, REGIMEN_VERBAL, COORD_TIPO,
 )
 
@@ -75,12 +75,8 @@ def _color_funcion(funcion: str) -> str:
     return COLOR_FUNCION.get(funcion, "#9CA3AF")
 
 
-def _es_copulativa(token: spacy.tokens.Token) -> bool:
-    return token.lemma_.lower() in VERBOS_COPULATIVOS
-
-
 def _detectar_crv(token: spacy.tokens.Token) -> bool:
-    """Devuelve True si este obl es un CRV (complemento de régimen verbal)."""
+    """True si este obl es un CRV (complemento de régimen verbal)."""
     head = token.head
     prep_hijos = [c for c in token.children if c.dep_ == "case"]
     if not prep_hijos:
@@ -92,15 +88,15 @@ def _detectar_crv(token: spacy.tokens.Token) -> bool:
 def _subtree_ids(token: spacy.tokens.Token, excluir_deps: set[str] | None = None) -> list[int]:
     """
     IDs del subárbol de un token, excluyendo ramas completas cuya raíz tenga
-    una dep excluida. Usar token.subtree plano no es suficiente porque excluir
-    'nsubj' no excluye los hijos de ese nodo (e.g. el determinante del sujeto).
+    una dep excluida. Traversal recursivo para excluir toda la rama, no solo
+    el nodo raíz de la misma.
     """
     excluir_deps = excluir_deps or set()
     ids: list[int] = []
 
     def _recoger(t: spacy.tokens.Token, es_raiz: bool = False) -> None:
         if not es_raiz and t.dep_ in excluir_deps:
-            return  # excluir este nodo y toda su rama
+            return
         if not t.is_punct:
             ids.append(t.i)
         for hijo in t.children:
@@ -114,112 +110,244 @@ def _subtree_ids(token: spacy.tokens.Token, excluir_deps: set[str] | None = None
 # Capa 2: construcción de grupos
 # ---------------------------------------------------------------------------
 
+# Deps que nunca generan un grupo funcional propio dentro del predicado
+_DEPS_IGNORAR = frozenset({
+    "aux", "aux:pass",
+    "cop",
+    "nsubj", "nsubj:pass",
+    "expl", "expl:impers", "expl:pass",
+    "cc", "conj",
+    "det", "case", "mark",
+    "flat", "flat:name",
+    "punct",
+    "nummod",
+    "amod", "nmod", "nmod:poss",  # CN (no se analizan como grupo independiente aquí)
+})
+
+# Deps de proposiciones subordinadas (se excluyen del subtree del predicado principal)
+_DEPS_SUBORD = frozenset({"ccomp", "advcl", "acl", "acl:relcl", "relcl"})
+
+
 def _construir_grupos(doc: spacy.tokens.Doc, nivel: Nivel) -> list[Grupo]:
-    """
-    TODO: implementación completa.
-    Por ahora devuelve el esqueleto correcto con los grupos principales
-    (Sujeto y Predicado) detectados desde el ROOT.
-    Los subgrupos (CD, CI, CC…) se implementarán en la siguiente iteración.
-    """
     grupos: list[Grupo] = []
+    gid = 0
+
     root = next((t for t in doc if t.dep_ == "ROOT"), None)
     if root is None:
         return grupos
 
-    deps_subordinadas = {"ccomp", "xcomp", "advcl", "acl", "acl:relcl", "relcl"}
+    # ── Detectar estructura copulativa ───────────────────────────────────────
+    # Dos casos según qué produzca es_dep_news_trf:
+    # (a) ROOT = atributo (ej: "azul"), verbo copulativo como hijo con dep="cop"
+    # (b) ROOT = atributo, pero spaCy etiqueta el verbo como dep="aux" en lugar
+    #     de "cop" — cubrimos ambos buscando aux con lema copulativo.
+    # (c) ROOT = verbo copulativo directamente (menos frecuente en UD español).
+    cop = next(
+        (c for c in root.children
+         if c.dep_ == "cop"
+         or (c.dep_ == "aux" and c.lemma_.lower() in VERBOS_COPULATIVOS)),
+        None
+    )
+    root_es_verbo_cop = (
+        root.lemma_.lower() in VERBOS_COPULATIVOS and root.pos_ == "VERB"
+    )
+    es_cop = (cop is not None) or root_es_verbo_cop
+    verbo  = cop if cop is not None else root  # el verbo para la gramática escolar
 
-    # ---- Sujeto ----
-    sujeto = next((c for c in root.children if c.dep_ in ("nsubj", "nsubj:pass")), None)
-    if sujeto:
-        ids_sujeto = _subtree_ids(sujeto)
+    # Auxiliares (forman parte del núcleo verbal junto con el verbo principal)
+    aux_tokens = [c for c in root.children if c.dep_ in ("aux", "aux:pass") and c is not cop]
+    ids_nucleo = sorted([verbo.i] + [a.i for a in aux_tokens])
+
+    # ── Sujeto ───────────────────────────────────────────────────────────────
+    sujeto_tok = next(
+        (c for c in root.children if c.dep_ in ("nsubj", "nsubj:pass")), None
+    )
+    sujeto_set: set[int] = set()
+    if sujeto_tok:
+        funcion_suj = "Sujeto paciente" if sujeto_tok.dep_ == "nsubj:pass" else "Sujeto"
+        ids_s = _subtree_ids(sujeto_tok)
+        sujeto_set = set(ids_s)
+        # spaCy a veces adjunta determinantes/adjetivos del SN sujeto directamente
+        # al verbo root en lugar de al sustantivo. Los detectamos por posición:
+        # cualquier det/amod/nummod hijo del root que aparezca ANTES del núcleo
+        # del sujeto pertenece al SN sujeto, no al predicado.
+        sujeto_set |= {
+            c.i for c in root.children
+            if c.dep_ in ("det", "amod", "nummod") and c.i < sujeto_tok.i
+        }
+        ids_s = sorted(sujeto_set)
         grupos.append(Grupo(
-            id=0,
-            token_ids=ids_sujeto,
-            texto=_texto_span(doc, ids_sujeto),
-            funcion="Sujeto",
-            nucleo_id=sujeto.i,
-            color=_color_funcion("Sujeto"),
-            subgrupos=[],   # TODO: CN, determinante, adjetivos del SN
+            id=gid, token_ids=ids_s, texto=_texto_span(doc, ids_s),
+            funcion=funcion_suj, nucleo_id=sujeto_tok.i,
+            color=_color_funcion(funcion_suj), subgrupos=[],
         ))
+        gid += 1
 
-    # ---- Predicado ----
-    tipo_pred = "Predicado nominal" if _es_copulativa(root) else "Predicado verbal"
+    # ── Predicado ─────────────────────────────────────────────────────────────
+    tipo_pred = "Predicado nominal" if es_cop else "Predicado verbal"
     ids_pred = _subtree_ids(
         root,
-        excluir_deps={"nsubj", "nsubj:pass", "punct"} | deps_subordinadas,
+        excluir_deps={"nsubj", "nsubj:pass", "punct"} | _DEPS_SUBORD,
     )
-    # Incluir al propio root si no está ya
     if root.i not in ids_pred:
         ids_pred = sorted(ids_pred + [root.i])
+    # Eliminar tokens del sujeto que spaCy haya adjuntado erróneamente al root
+    ids_pred = [i for i in ids_pred if i not in sujeto_set]
 
-    subgrupos_pred = _construir_subgrupos(doc, root, nivel)
-
+    nucleo_sub = Subgrupo(
+        token_ids=ids_nucleo,
+        texto=_texto_span(doc, ids_nucleo),
+        funcion="Núcleo verbal",
+        nucleo_id=verbo.i,
+        color=_color_funcion("Núcleo verbal"),
+    )
     grupos.append(Grupo(
-        id=1,
-        token_ids=ids_pred,
-        texto=_texto_span(doc, ids_pred),
-        funcion=tipo_pred,
-        nucleo_id=root.i,
-        color=_color_funcion(tipo_pred),
-        subgrupos=subgrupos_pred,
+        id=gid, token_ids=ids_pred, texto=_texto_span(doc, ids_pred),
+        funcion=tipo_pred, nucleo_id=verbo.i,
+        color=_color_funcion(tipo_pred), subgrupos=[nucleo_sub],
     ))
+    gid += 1
+
+    # ── Complementos ─────────────────────────────────────────────────────────
+    if es_cop:
+        if verbo is root:
+            # (c) ROOT es el propio verbo copulativo; buscar el atributo entre sus hijos
+            atr_tok = next(
+                (c for c in root.children if c.dep_ in ("attr", "xcomp", "acomp")),
+                None
+            )
+            if atr_tok:
+                ids_atr = [i for i in _subtree_ids(atr_tok, excluir_deps={"punct"})
+                           if i not in sujeto_set]
+                if ids_atr:
+                    grupos.append(Grupo(
+                        id=gid, token_ids=ids_atr, texto=_texto_span(doc, ids_atr),
+                        funcion="Atributo", nucleo_id=atr_tok.i,
+                        color=_color_funcion("Atributo"), subgrupos=[],
+                    ))
+                    gid += 1
+        else:
+            # (a)/(b) ROOT es el atributo; su subtree sin sujeto/cop/aux/punt = Atributo
+            ids_atr = _subtree_ids(
+                root,
+                excluir_deps={"nsubj", "nsubj:pass", "cop", "aux", "aux:pass", "punct"},
+            )
+            ids_atr = [i for i in ids_atr if i not in sujeto_set]
+            if ids_atr:
+                grupos.append(Grupo(
+                    id=gid, token_ids=ids_atr, texto=_texto_span(doc, ids_atr),
+                    funcion="Atributo", nucleo_id=root.i,
+                    color=_color_funcion("Atributo"), subgrupos=[],
+                ))
+                gid += 1
+    else:
+        for hijo in root.children:
+            dep = hijo.dep_
+
+            if dep in _DEPS_IGNORAR or dep in _DEPS_SUBORD:
+                continue
+
+            if dep == "obj":
+                funcion = "CD"
+            elif dep == "iobj":
+                funcion = "CI"
+            elif dep == "obl":
+                funcion = "CRV" if _detectar_crv(hijo) else "CC"
+            elif dep == "obl:agent":
+                funcion = "C. Agente"
+            elif dep == "advmod":
+                if hijo.lemma_.lower() in ("no", "sí", "tampoco", "también"):
+                    continue
+                funcion = "CC"
+            elif dep == "xcomp":
+                funcion = "C. Predicativo"
+            else:
+                continue
+
+            ids = [i for i in _subtree_ids(hijo) if i not in sujeto_set]
+            if not ids:
+                continue
+            grupos.append(Grupo(
+                id=gid, token_ids=ids, texto=_texto_span(doc, ids),
+                funcion=funcion, nucleo_id=hijo.i,
+                color=_color_funcion(funcion), subgrupos=[],
+            ))
+            gid += 1
 
     return grupos
-
-
-def _construir_subgrupos(
-    doc: spacy.tokens.Doc,
-    root: spacy.tokens.Token,
-    nivel: Nivel,
-) -> list[Subgrupo]:
-    """
-    TODO: implementación completa.
-    Detecta CD, CI, CC, CRV, Atributo, C. Predicativo, C. Agente.
-    Por ahora devuelve el núcleo verbal como único subgrupo.
-    """
-    subgrupos: list[Subgrupo] = []
-
-    # Núcleo verbal (siempre presente)
-    subgrupos.append(Subgrupo(
-        token_ids=[root.i],
-        texto=root.text,
-        funcion="Núcleo verbal",
-        nucleo_id=root.i,
-        color=_color_funcion("Núcleo verbal"),
-    ))
-
-    # TODO: iterar sobre los hijos del root y construir subgrupos para:
-    #   obj      → CD
-    #   iobj     → CI
-    #   obl      → CC o CRV (usar _detectar_crv)
-    #   obl:agent → C. Agente
-    #   aux/cop  → auxiliares
-    #   attr     → Atributo (si _es_copulativa)
-    #   xcomp    → C. Predicativo o subordinada
-    #   advmod   → CC
-
-    return subgrupos
 
 
 # ---------------------------------------------------------------------------
 # Capa 3: proposiciones (4º ESO y Bachillerato)
 # ---------------------------------------------------------------------------
 
+_TIPO_ES: dict[str, str] = {
+    "principal":               "Proposición principal",
+    "coordinada_copulativa":   "Coordinada copulativa",
+    "coordinada_adversativa":  "Coordinada adversativa",
+    "coordinada_disyuntiva":   "Coordinada disyuntiva",
+    "coordinada_explicativa":  "Coordinada explicativa",
+    "subordinada_sustantiva":  "Subordinada sustantiva",
+    "subordinada_adjetiva":    "Subordinada adjetiva",
+    "subordinada_adverbial":   "Subordinada adverbial",
+    "yuxtapuesta":             "Oración yuxtapuesta",
+}
+
+
 def _detectar_proposiciones(doc: spacy.tokens.Doc) -> list[Proposicion]:
-    """
-    TODO: implementación completa.
-    Detecta proposiciones coordinadas, subordinadas sustantivas,
-    adjetivas y adverbiales, y yuxtapuestas.
-    """
     proposiciones: list[Proposicion] = []
 
-    # TODO: implementar detección de:
-    #   - Proposición principal
-    #   - Coordinadas (conj + cc → tipo por COORD_TIPO)
-    #   - Subordinadas sustantivas (ccomp, xcomp, csubj)
-    #   - Subordinadas adjetivas / de relativo (acl:relcl)
-    #   - Subordinadas adverbiales (advcl)
-    #   - Yuxtapuestas (múltiples ROOT o parataxis sin cc)
+    for token in doc:
+        dep  = token.dep_
+        nexo: str | None = None
+
+        if dep == "conj":
+            cc_tok = next((c for c in token.children if c.dep_ == "cc"), None)
+            nexo   = cc_tok.text.lower() if cc_tok else None
+            tipo   = f"coordinada_{COORD_TIPO.get(nexo, 'copulativa')}" if nexo else "yuxtapuesta"
+
+        elif dep in ("ccomp", "csubj"):
+            mark_tok = next((c for c in token.children if c.dep_ == "mark"), None)
+            nexo     = mark_tok.text.lower() if mark_tok else None
+            tipo     = "subordinada_sustantiva"
+
+        elif dep == "acl:relcl":
+            rel_tok = next(
+                (c for c in token.children
+                 if c.pos_ == "PRON" and c.dep_ in ("nsubj", "obj", "obl", "ref")),
+                None,
+            )
+            nexo = rel_tok.text.lower() if rel_tok else None
+            tipo = "subordinada_adjetiva"
+
+        elif dep == "advcl":
+            mark_tok = next((c for c in token.children if c.dep_ == "mark"), None)
+            nexo     = mark_tok.text.lower() if mark_tok else None
+            tipo     = "subordinada_adverbial"
+
+        elif dep == "parataxis":
+            tipo = "yuxtapuesta"
+
+        else:
+            continue
+
+        proposiciones.append(Proposicion(
+            tipo=tipo,
+            tipo_es=_TIPO_ES.get(tipo, tipo),
+            token_ids=_subtree_ids(token),
+            nexo=nexo,
+        ))
+
+    # Proposición principal: todos los tokens que no pertenecen a ninguna secundaria
+    secondary_ids: set[int] = {i for p in proposiciones for i in p.token_ids}
+    principal_ids = [t.i for t in doc if not t.is_punct and t.i not in secondary_ids]
+    if principal_ids:
+        proposiciones.insert(0, Proposicion(
+            tipo="principal",
+            tipo_es=_TIPO_ES["principal"],
+            token_ids=principal_ids,
+            nexo=None,
+        ))
 
     return proposiciones
 
@@ -229,23 +357,25 @@ def _detectar_proposiciones(doc: spacy.tokens.Doc) -> list[Proposicion]:
 # ---------------------------------------------------------------------------
 
 def _tipo_oracion(doc: spacy.tokens.Doc, nivel: Nivel) -> str:
-    """
-    TODO: clasificación completa según nivel.
-    Devuelve una etiqueta legible para el alumno.
-    """
     root = next((t for t in doc if t.dep_ == "ROOT"), None)
     if root is None:
         return "Oración"
 
-    es_copulativa = _es_copulativa(root)
-    es_pasiva = any(t.dep_ in ("nsubj:pass", "aux:pass") for t in doc)
+    es_cop = (
+        any(
+            c.dep_ == "cop" or (c.dep_ == "aux" and c.lemma_.lower() in VERBOS_COPULATIVOS)
+            for c in root.children
+        )
+        or root.lemma_.lower() in VERBOS_COPULATIVOS
+    )
+    es_pasiva    = any(t.dep_ in ("nsubj:pass", "aux:pass") for t in doc)
     es_impersonal = any(t.dep_ == "expl:impers" for t in doc)
 
     if es_impersonal:
         return "Oración impersonal"
     if es_pasiva:
         return "Oración pasiva"
-    if es_copulativa:
+    if es_cop:
         return "Oración copulativa"
     return "Oración predicativa"
 
@@ -258,8 +388,8 @@ def analizar(oracion: str, nivel: Nivel) -> AnalisisResponse:
     nlp = _get_nlp()
     doc = nlp(oracion)
 
-    tokens = _extraer_tokens(doc, nivel)
-    grupos = _construir_grupos(doc, nivel)
+    tokens      = _extraer_tokens(doc, nivel)
+    grupos      = _construir_grupos(doc, nivel)
     proposiciones = (
         _detectar_proposiciones(doc)
         if nivel in ("4eso", "bachillerato")

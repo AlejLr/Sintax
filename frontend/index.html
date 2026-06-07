@@ -1,10 +1,28 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <meta name="description" content="Practica el análisis sintáctico del español paso a paso. Para estudiantes de ESO y Bachillerato." />
+    <title>Sintax — análisis sintáctico</title>
+
+    <!-- Google Analytics GA4 — only fires when VITE_GA_MEASUREMENT_ID is set -->
+    <script>
+      (function () {
+        var id = "%VITE_GA_MEASUREMENT_ID%";
+        if (!id || id === "%VITE_GA_MEASUREMENT_ID%") return;
+        var s = document.createElement("script");
+        s.src = "https://www.googletagmanager.com/gtag/js?id=" + id;
+        s.async = true;
+        document.head.appendChild(s);
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        window.gtag = gtag;
+        gtag("js", new Date());
+        gtag("config", id);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

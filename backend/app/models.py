@@ -19,8 +19,14 @@ class AnalisisRequest(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("La oración no puede estar vacía.")
-        if len(v) > 500:
-            raise ValueError("La oración no puede superar los 500 caracteres.")
+        if len(v) > 300:
+            raise ValueError("La oración no puede superar los 300 caracteres.")
+        palabras = [p for p in v.split() if p]
+        if len(palabras) > 25:
+            raise ValueError(
+                f"La oración tiene {len(palabras)} palabras. "
+                "El analizador funciona mejor con oraciones de hasta 25 palabras."
+            )
         return v
 
 

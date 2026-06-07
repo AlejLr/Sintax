@@ -109,7 +109,10 @@ COLOR_CATEGORIA: dict[str, str] = {
 }
 
 # Verbos copulativos en español
-VERBOS_COPULATIVOS = {"ser", "estar", "parecer", "resultar", "semejar", "quedarse", "volverse"}
+VERBOS_COPULATIVOS = {
+    "ser", "estar", "parecer", "resultar", "semejar",
+    "quedar", "quedarse", "volver", "volverse",
+}
 
 # Verbos con régimen preposicional fijo más comunes (verbo → preposición(es))
 # Permite distinguir CC de CRV

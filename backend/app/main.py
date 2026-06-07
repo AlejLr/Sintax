@@ -29,5 +29,10 @@ def salud():
 def analizar_oracion(req: AnalisisRequest):
     try:
         return analizar(req.oracion, req.nivel)
+    except MemoryError:
+        raise HTTPException(
+            status_code=500,
+            detail="La oración es demasiado compleja para el analizador. Prueba con una más corta.",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

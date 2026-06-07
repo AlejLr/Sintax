@@ -12,4 +12,6 @@ RUN python -m spacy download es_dep_news_trf
 COPY . .
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Single worker: transformer model holds ~2 GB RAM per process.
+# Scale horizontally via Cloud Run instances, not uvicorn workers.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
