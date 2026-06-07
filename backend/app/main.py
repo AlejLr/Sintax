@@ -1,14 +1,22 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 
 from .models import AnalisisRequest, AnalisisResponse
-from .analyzer import analizar
+from .analyzer import analizar, _get_nlp
 
 load_dotenv()
 
-app = FastAPI(title="Sintax API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _get_nlp()   # load model at startup so Cloud Run waits until it's ready
+    yield
+
+
+app = FastAPI(title="Sintax API", version="0.1.0", lifespan=lifespan)
 
 origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 
