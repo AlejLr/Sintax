@@ -4,6 +4,7 @@ import Header from "./components/Header.jsx";
 import SentenceInput from "./components/SentenceInput.jsx";
 import ExerciseView from "./components/ExerciseView.jsx";
 import CorrectionView from "./components/CorrectionView.jsx";
+import CookieBanner from "./components/CookieBanner.jsx";
 import "./index.css";
 
 export default function App() {
@@ -57,6 +58,8 @@ export default function App() {
           onNuevaOracion={() => setScreen("input")}
         />
       )}
+
+      <CookieBanner />
     </div>
   );
 }

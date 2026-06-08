@@ -3,16 +3,20 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
+import threading
 
 from .models import AnalisisRequest, AnalisisResponse
-from .analyzer import analizar, _get_nlp
+from .analyzer import analizar, load_fast_model, load_transformer_model
 
 load_dotenv()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _get_nlp()   # load model at startup so Cloud Run waits until it's ready
+    # 1. Load the fast model synchronously (~1 s) — port opens right after this.
+    load_fast_model()
+    # 2. Load the transformer in the background (~40 s) without blocking startup.
+    threading.Thread(target=load_transformer_model, daemon=True).start()
     yield
 
 

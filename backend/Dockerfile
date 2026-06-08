@@ -11,7 +11,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir torch \
       --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
-RUN python -m spacy download es_dep_news_trf
+RUN python -m spacy download es_dep_news_trf && \
+    python -m spacy download es_core_news_lg
 
 COPY . .
 

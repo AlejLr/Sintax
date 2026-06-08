@@ -1,6 +1,12 @@
 """
 Núcleo del análisis sintáctico.
-Carga el modelo spaCy una sola vez y expone la función `analizar()`.
+Expone la función `analizar()` y dos funciones de carga de modelos.
+
+Estrategia de degradación progresiva:
+  1. `load_fast_model()`  carga es_core_news_lg  (~1 s)  → puerto abierto inmediatamente
+  2. `load_transformer_model()` carga es_dep_news_trf (~40 s) en hilo de fondo
+  Mientras el transformador carga, las peticiones usan el modelo rápido.
+  En cuanto termina, todas las peticiones usan el transformador.
 """
 from __future__ import annotations
 import spacy
@@ -14,17 +20,30 @@ from .mappings import (
 )
 
 # ---------------------------------------------------------------------------
-# Carga del modelo (singleton)
+# Carga de modelos (degradación progresiva)
 # ---------------------------------------------------------------------------
 
-_nlp: spacy.language.Language | None = None
+_nlp_fast: spacy.language.Language | None = None  # es_core_news_lg
+_nlp_trf:  spacy.language.Language | None = None  # es_dep_news_trf
+
+
+def load_fast_model() -> None:
+    global _nlp_fast
+    if _nlp_fast is None:
+        _nlp_fast = spacy.load("es_core_news_lg")
+
+
+def load_transformer_model() -> None:
+    global _nlp_trf
+    if _nlp_trf is None:
+        _nlp_trf = spacy.load("es_dep_news_trf")
 
 
 def _get_nlp() -> spacy.language.Language:
-    global _nlp
-    if _nlp is None:
-        _nlp = spacy.load("es_dep_news_trf")
-    return _nlp
+    """Devuelve el mejor modelo disponible en este momento."""
+    if _nlp_trf is not None:
+        return _nlp_trf
+    return _nlp_fast  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
