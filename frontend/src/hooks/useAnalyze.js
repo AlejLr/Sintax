@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 
 const API_BASE    = import.meta.env.VITE_API_URL ?? "";
-const TIMEOUT_MS  = 60_000;   // 60 s — covers Render free-tier cold start
+const TIMEOUT_MS  = 90_000;   // 90 s — covers Cloud Run cold start + model load
 
 export function useAnalyze() {
   const [data,         setData]         = useState(null);
